@@ -1,0 +1,7 @@
+# build output (the DMG is published under GitHub Releases)
+build/
+dist/
+# macOS / ExFAT metadata
+._*
+.DS_Store
+*.log
