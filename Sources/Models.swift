@@ -72,6 +72,29 @@ final class AppState: ObservableObject {
     // Pinned items are saved encrypted in the Keychain; settings in the normal preferences file.
     @Published var pinned: [Entry] = [] { didSet { savePinned() } }
     @Published var excluded: [ExcludedApp] = [] { didSet { save(excluded, key: "excluded") } }
+    /// Apps where Enter means a new line (documents, notes, code): text is saved as unsent when you leave.
+    @Published var longForm: [ExcludedApp] = [] { didSet { save(longForm, key: "longForm") } }
+    /// Read the final text from the field (Accessibility permission).
+    @Published var highAccuracy = UserDefaults.standard.bool(forKey: "highAccuracy") {
+        didSet { UserDefaults.standard.set(highAccuracy, forKey: "highAccuracy") }
+    }
+
+    static let defaultLongForm: [ExcludedApp] = [
+        ExcludedApp(bundleID: "com.apple.Notes", name: "Notes"),
+        ExcludedApp(bundleID: "com.apple.TextEdit", name: "TextEdit"),
+        ExcludedApp(bundleID: "com.apple.iWork.Pages", name: "Pages"),
+        ExcludedApp(bundleID: "com.microsoft.Word", name: "Microsoft Word"),
+        ExcludedApp(bundleID: "com.microsoft.VSCode", name: "Visual Studio Code"),
+        ExcludedApp(bundleID: "com.apple.dt.Xcode", name: "Xcode"),
+        ExcludedApp(bundleID: "com.sublimetext.4", name: "Sublime Text"),
+        ExcludedApp(bundleID: "md.obsidian", name: "Obsidian"),
+        ExcludedApp(bundleID: "notion.id", name: "Notion"),
+    ]
+
+    func isLongForm(_ bundleID: String?) -> Bool {
+        guard let bundleID else { return false }
+        return longForm.contains { $0.bundleID == bundleID }
+    }
     @Published var paused = false {
         didSet {
             UserDefaults.standard.set(paused, forKey: "paused")
@@ -110,6 +133,9 @@ final class AppState: ObservableObject {
             excluded = load([ExcludedApp].self, key: "excluded") ?? Self.defaultExcluded
         }
         paused = UserDefaults.standard.bool(forKey: "paused")
+        longForm = UserDefaults.standard.object(forKey: "longForm") == nil
+            ? Self.defaultLongForm
+            : (load([ExcludedApp].self, key: "longForm") ?? Self.defaultLongForm)
         if !UserDefaults.standard.bool(forKey: "terminalsExcluded") {
             for t in Self.terminalApps where !excluded.contains(where: { $0.bundleID == t.bundleID }) {
                 excluded.append(t)

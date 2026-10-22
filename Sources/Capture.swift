@@ -3,21 +3,30 @@ import Carbon.HIToolbox
 import IOKit.hid
 
 /// Listens to the keyboard (read only) and turns keystrokes into sentences.
+/// It keeps a cursor, so arrow keys and edits in the middle of a sentence are followed,
+/// and translates dead keys (e.g. ^ then e = ê) with the current keyboard layout.
+/// In "high accuracy" mode it reads the final text straight from the field (Accessibility).
 @MainActor
 final class KeyCapture {
     static let shared = KeyCapture()
 
     private var tap: CFMachPort?
-    private var buffer = ""
+    private var chars: [Character] = []
+    private var cursor = 0
+    /// After Cmd+A the next key replaces everything.
+    private var allSelected = false
     private var bufferApp: NSRunningApplication?
     private var idleTimer: Timer?
     private let state = AppState.shared
     /// id of the unsent text being typed now, so a later Enter can replace its draft
     private var draftID = UUID()
+    private var deadKeyState: UInt32 = 0
 
     var isRunning: Bool { tap != nil }
     private var keyCount = 0
     private var lastStatus = ""
+
+    private var buffer: String { String(chars) }
 
     func start() -> Bool {
         if tap != nil { return true }
@@ -54,7 +63,8 @@ final class KeyCapture {
     func handle(_ type: CGEventType, _ event: CGEvent) {
         if type == .leftMouseDown || type == .rightMouseDown {
             // A click usually means a new field or a new place: keep what was typed as unsent.
-            commit(sent: false)
+            // The field still has focus at this moment, so high accuracy can read it first.
+            commit(sent: false, readField: true)
             return
         }
         guard type == .keyDown else { return }
@@ -63,12 +73,12 @@ final class KeyCapture {
             DiagLog.detail("keys received=\(keyCount) paused=\(state.paused) secure=\(IsSecureEventInputEnabled()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-")")
         }
 
-        // Ctrl + Cmd + V or Ctrl + Option + V opens the panel next to the mouse (works even when paused).
-        let hkFlags = event.flags
-        if Int(event.getIntegerValueField(.keyboardEventKeycode)) == kVK_ANSI_V,
-           hkFlags.contains(.maskControl), !hkFlags.contains(.maskShift),
-           hkFlags.contains(.maskCommand) != hkFlags.contains(.maskAlternate) {
-            HotKey.shared.fire(source: "tap")
+        let flags = event.flags
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+
+        // The panel shortcut (the system hotkey normally catches it first; this is the fallback).
+        if HotKey.shared.matches(keyCode: keyCode, flags: flags) {
+            HotKey.shared.tapSaw()
             return
         }
 
@@ -85,16 +95,26 @@ final class KeyCapture {
         if bufferApp?.processIdentifier != front?.processIdentifier {
             commit(sent: false)
             bufferApp = front
+            if state.highAccuracy { FieldReader.enableWebAccessibility(for: front) }
         }
 
-        let flags = event.flags
-        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-
         if flags.contains(.maskCommand) {
-            if keyCode == kVK_ANSI_V, let pasted = NSPasteboard.general.string(forType: .string) {
-                append(pasted)
-            } else if keyCode == kVK_Delete {
-                buffer = ""
+            switch keyCode {
+            case kVK_ANSI_V:
+                if let pasted = NSPasteboard.general.string(forType: .string) { insert(pasted) }
+            case kVK_ANSI_A:
+                allSelected = true
+            case kVK_ANSI_X:
+                if allSelected { clearAll() }
+            case kVK_Delete:
+                // delete to the start of the line
+                chars.removeSubrange(0..<cursor); cursor = 0
+            case kVK_LeftArrow, kVK_UpArrow:
+                cursor = 0
+            case kVK_RightArrow, kVK_DownArrow:
+                cursor = chars.count
+            default:
+                break
             }
             return
         }
@@ -102,53 +122,129 @@ final class KeyCapture {
 
         switch keyCode {
         case kVK_Return, kVK_ANSI_KeypadEnter:
-            if flags.contains(.maskShift) || flags.contains(.maskAlternate) {
-                // Shift/Option + Enter is a new line in chat apps, not sending.
-                append("\n")
+            let newline = flags.contains(.maskShift) || flags.contains(.maskAlternate)
+                || state.isLongForm(front?.bundleIdentifier)
+            if newline {
+                // Shift/Option + Enter in chats, or any Enter in Notes, Word, code editors…: a new line.
+                insert("\n")
             } else {
-                commit(sent: true)
+                commit(sent: true, readField: true)
             }
             return
         case kVK_Tab:
-            commit(sent: false)
+            commit(sent: false, readField: true)
             return
         case kVK_Escape:
             discard()
             return
         case kVK_Delete:
+            if allSelected { clearAll(); touch(); return }
             if flags.contains(.maskAlternate) {
-                deleteLastWord()
-            } else if !buffer.isEmpty {
-                buffer.removeLast()
+                deleteWordBeforeCursor()
+            } else if cursor > 0 {
+                chars.remove(at: cursor - 1); cursor -= 1
             }
             touch()
             return
-        case kVK_ForwardDelete, kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow,
-             kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown:
+        case kVK_ForwardDelete:
+            if allSelected { clearAll(); touch(); return }
+            if cursor < chars.count { chars.remove(at: cursor) }
+            touch()
+            return
+        case kVK_LeftArrow:
+            allSelected = false
+            if flags.contains(.maskAlternate) { cursor = wordStart(before: cursor) } else { cursor = max(0, cursor - 1) }
+            return
+        case kVK_RightArrow:
+            allSelected = false
+            if flags.contains(.maskAlternate) { cursor = wordEnd(after: cursor) } else { cursor = min(chars.count, cursor + 1) }
+            return
+        case kVK_Home, kVK_UpArrow, kVK_PageUp:
+            allSelected = false
+            cursor = 0
+            return
+        case kVK_End, kVK_DownArrow, kVK_PageDown:
+            allSelected = false
+            cursor = chars.count
             return
         default:
             break
         }
 
-        guard let chars = NSEvent(cgEvent: event)?.characters, !chars.isEmpty else { return }
-        let clean = String(String.UnicodeScalarView(chars.unicodeScalars.filter { s in
+        let typed = translate(keyCode: keyCode, flags: flags) ?? fallbackChars(event)
+        let clean = String(String.UnicodeScalarView(typed.unicodeScalars.filter { s in
             !(s.value < 0x20 || s.value == 0x7F || (0xF700...0xF8FF).contains(s.value))
         }))
         if clean.isEmpty { return }
-
-        append(clean)
+        insert(clean)
     }
 
-    private func append(_ s: String) {
-        buffer += s
-        if buffer.count > 3000 { buffer = String(buffer.suffix(3000)) }
+    // MARK: editing
+
+    private func insert(_ s: String) {
+        if allSelected { clearAll() }
+        let new = Array(s)
+        chars.insert(contentsOf: new, at: cursor)
+        cursor += new.count
+        if chars.count > 3000 {
+            let extra = chars.count - 3000
+            chars.removeFirst(extra)
+            cursor = max(0, cursor - extra)
+        }
         touch()
     }
 
-    private func deleteLastWord() {
-        while let last = buffer.last, last.isWhitespace { buffer.removeLast() }
-        while let last = buffer.last, !last.isWhitespace { buffer.removeLast() }
+    private func clearAll() {
+        chars.removeAll(); cursor = 0; allSelected = false
     }
+
+    private func deleteWordBeforeCursor() {
+        let start = wordStart(before: cursor)
+        chars.removeSubrange(start..<cursor)
+        cursor = start
+    }
+
+    private func wordStart(before i: Int) -> Int {
+        var j = i
+        while j > 0, chars[j - 1].isWhitespace { j -= 1 }
+        while j > 0, !chars[j - 1].isWhitespace { j -= 1 }
+        return j
+    }
+
+    private func wordEnd(after i: Int) -> Int {
+        var j = i
+        while j < chars.count, chars[j].isWhitespace { j += 1 }
+        while j < chars.count, !chars[j].isWhitespace { j += 1 }
+        return j
+    }
+
+    // MARK: key translation
+
+    /// Uses the active keyboard layout, keeping dead-key state between presses (^ + e = ê).
+    private func translate(keyCode: Int, flags: CGEventFlags) -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let ptr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let layoutData = Unmanaged<CFData>.fromOpaque(ptr).takeUnretainedValue() as Data
+        var mods: UInt32 = 0
+        if flags.contains(.maskShift) { mods |= UInt32(shiftKey >> 8) }
+        if flags.contains(.maskAlternate) { mods |= UInt32(optionKey >> 8) }
+        if flags.contains(.maskAlphaShift) { mods |= UInt32(alphaLock >> 8) }
+        var length = 0
+        var buf = [UniChar](repeating: 0, count: 8)
+        let status = layoutData.withUnsafeBytes { raw -> OSStatus in
+            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else { return -1 }
+            return UCKeyTranslate(layout, UInt16(keyCode), UInt16(kUCKeyActionDown), mods,
+                                  UInt32(LMGetKbdType()), 0, &deadKeyState, buf.count, &length, &buf)
+        }
+        guard status == noErr else { return nil }
+        return String(utf16CodeUnits: buf, count: length)
+    }
+
+    private func fallbackChars(_ event: CGEvent) -> String {
+        NSEvent(cgEvent: event)?.characters ?? ""
+    }
+
+    // MARK: saving
 
     private func touch() {
         idleTimer?.invalidate()
@@ -160,7 +256,7 @@ final class KeyCapture {
 
     private func discard() {
         idleTimer?.invalidate()
-        buffer = ""
+        clearAll()
     }
 
     private func isWorthSaving(_ text: String) -> Bool {
@@ -168,7 +264,7 @@ final class KeyCapture {
     }
 
     func snapshotDraft() {
-        let text = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = currentText(readField: true)
         if isWorthSaving(text) {
             state.upsertDraft(id: draftID, text: text, app: bufferApp)
         } else {
@@ -176,12 +272,24 @@ final class KeyCapture {
         }
     }
 
+    /// The text to save: from the field itself in high-accuracy mode (when readable),
+    /// otherwise what was rebuilt from the keys.
+    private func currentText(readField: Bool, sending: Bool = false) -> String {
+        let typed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        // When sending, read the field even if no keys were seen (dictation, paste from a menu).
+        guard readField, state.highAccuracy, !typed.isEmpty || sending,
+              !state.isLongForm(bufferApp?.bundleIdentifier),
+              let fieldText = FieldReader.focusedText() else { return typed }
+        let t = fieldText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? typed : String(t.prefix(3000))
+    }
+
     /// sent = Enter was pressed; otherwise the text is kept in the "without Enter" list.
-    func commit(sent: Bool) {
+    func commit(sent: Bool, readField: Bool = false) {
         idleTimer?.invalidate()
-        let text = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = currentText(readField: readField, sending: sent)
         let id = draftID
-        buffer = ""
+        clearAll()
         draftID = UUID()
         if sent {
             state.removeDraft(id: id)
@@ -194,6 +302,49 @@ final class KeyCapture {
         } else {
             state.removeDraft(id: id)
         }
+    }
+}
+
+/// High-accuracy mode: reads the text of the focused field through the Accessibility API.
+@MainActor
+enum FieldReader {
+    static var isTrusted: Bool { AXIsProcessTrusted() }
+
+    static func requestPermission() {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+    }
+
+    /// The focused field's text, or nil (no permission, password field, or not a text field).
+    static func focusedText() -> String? {
+        guard isTrusted else { return nil }
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.15)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let el = focused, CFGetTypeID(el) == AXUIElementGetTypeID() else { return nil }
+        let element = el as! AXUIElement
+        var role: CFTypeRef?
+        var subrole: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+        AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)
+        if (subrole as? String) == (kAXSecureTextFieldSubrole as String) { return nil }
+        let allowed: Set<String> = [kAXTextFieldRole as String, kAXTextAreaRole as String, kAXComboBoxRole as String, "AXSearchField"]
+        guard let r = role as? String, allowed.contains(r) || (subrole as? String) == "AXSearchField" else { return nil }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success else { return nil }
+        return value as? String
+    }
+
+    private static var enabledPIDs: Set<pid_t> = []
+
+    /// Chrome and Electron apps (Slack, WhatsApp, Discord…) only expose their text fields
+    /// when an assistive app asks for it.
+    static func enableWebAccessibility(for app: NSRunningApplication?) {
+        guard isTrusted, let app, !enabledPIDs.contains(app.processIdentifier) else { return }
+        enabledPIDs.insert(app.processIdentifier)
+        let el = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 }
 

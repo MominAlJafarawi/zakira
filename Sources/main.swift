@@ -207,6 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func handleKey(_ event: NSEvent) -> NSEvent? {
         let code = Int(event.keyCode)
+        if HotKey.shared.isRecording {
+            if code == kVK_Escape { HotKey.shared.isRecording = false } else { _ = HotKey.shared.record(event) }
+            return nil
+        }
         if event.modifierFlags.contains(.command) {
             switch code {
             case kVK_ANSI_1: ui.tab = .typed; return nil

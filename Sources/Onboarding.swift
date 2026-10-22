@@ -119,7 +119,9 @@ struct OnboardingView: View {
             PageTitle(icon: "hand.tap", title: T("كيف بتستعمله", "How to use it"),
                       subtitle: T("كل شي بيصير من لوحة وحدة.", "Everything happens in one small panel."))
             UsageRow(icon: "brain", title: T("أيقونة المخ فوق", "The brain icon"), text: T("اضغط عليها جنب الساعة لتفتح اللوحة.", "Click it in the menu bar to open the panel."))
-            UsageRow(keys: "⌃ ⌘ V", title: T("أو من أي مكان", "Or from anywhere"), text: T("اضغط Ctrl + Cmd + V وبتنفتح اللوحة جنب الماوس.", "Press Ctrl + Cmd + V to open the panel next to your pointer."))
+            UsageRow(keys: HotKey.shared.display, title: T("أو من أي مكان", "Or from anywhere"),
+                     text: T("اضغط \(HotKey.shared.spoken) وبتنفتح اللوحة جنب الماوس. بتقدر تغيّره من الإعدادات.",
+                             "Press \(HotKey.shared.spoken) to open the panel next to your pointer. You can change it in Settings."))
             UsageRow(icon: "cursorarrow.click", title: T("كبسة = نسخ", "Click = copy"), text: T("اضغط على أي سطر أو صورة، وبعدين الصق بـ Cmd + V.", "Click any line or image, then paste with Cmd + V."))
             UsageRow(icon: "return", title: T("بالإنتر وبدون إنتر", "Sent and unsent"), text: T("اللي بعتّه بإنتر لحال، والكلام اللي تركته بدون إرسال لحال.", "Text you sent with Enter is kept apart from text you left unsent."))
             UsageRow(icon: "pin", title: T("ثبّت المهم", "Pin what matters"), text: T("مرّق الماوس على أي سطر واضغط الدبوس، وما بينمحي.", "Hover over a line and click the pin to keep it."))

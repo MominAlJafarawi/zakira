@@ -527,15 +527,34 @@ struct SettingsPane: View {
                             .controlSize(.small)
                     }
 
+                    ShortcutRow()
+
                     HStack {
-                        Image(systemName: "keyboard").foregroundStyle(.secondary)
-                        Text(T("فتح اللوحة جنب الماوس", "Open panel at pointer")).font(.system(size: 12.5))
+                        Image(systemName: "scope").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(T("دقة عالية", "High accuracy")).font(.system(size: 12.5))
+                            Text(T("بيقرأ النص النهائي من الخانة نفسها، فالتعديلات والتصحيح التلقائي والإملاء الصوتي بتطلع صح. بيحتاج إذن Accessibility.",
+                                   "Reads the final text from the field itself, so edits, autocorrect and dictation come out right. Needs the Accessibility permission."))
+                                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         Spacer()
-                        Text("⌃ ⌘ V")
-                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
-                            .environment(\.layoutDirection, .leftToRight)
+                        Toggle("", isOn: Binding(get: { state.highAccuracy }, set: { on in
+                            state.highAccuracy = on
+                            if on && !FieldReader.isTrusted { FieldReader.requestPermission() }
+                        }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    if state.highAccuracy && !FieldReader.isTrusted {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            Text(T("فعّل Zakira بـ Accessibility حتى تشتغل الدقة العالية.", "Turn Zakira on under Accessibility for high accuracy."))
+                                .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+                            Button(T("فتح", "Open")) {
+                                if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") { NSWorkspace.shared.open(u) }
+                            }.controlSize(.small)
+                        }
                     }
 
                     HStack {
@@ -591,33 +610,17 @@ struct SettingsPane: View {
                 }
 
                 SettingsSection(title: T("برامج ما بيسجّل منها", "Never record from")) {
-                    if state.excluded.isEmpty {
-                        Text(T("ما في برامج مستثناة", "No excluded apps")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                    ForEach(state.excluded) { app in
-                        HStack(spacing: 8) {
-                            AppIcon(bundleID: app.bundleID).frame(width: 18, height: 18)
-                            Text(app.name).font(.system(size: 12.5))
-                            Spacer()
-                            IconButton(symbol: "minus.circle.fill", tint: .red, help: T("إزالة", "Remove")) {
-                                withAnimation { state.excluded.removeAll { $0.bundleID == app.bundleID } }
-                            }
-                        }
-                    }
-                    Menu {
-                        ForEach(runningApps(), id: \.bundleID) { app in
-                            Button(app.name) {
-                                withAnimation { state.excluded.append(app) }
-                            }
-                        }
-                    } label: {
-                        Label(T("إضافة برنامج مفتوح", "Add a running app"), systemImage: "plus.circle.fill")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
+                    AppListEditor(apps: $state.excluded, emptyText: T("ما في برامج مستثناة", "No excluded apps"))
                     Text(T("لإضافة برنامج البنك مثلاً: افتحه أولاً، بعدين اختاره من القائمة.", "To add an app (e.g. your bank), open it first, then pick it from the list."))
                         .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+
+                SettingsSection(title: T("برامج الكتابة الطويلة", "Long-form apps")) {
+                    Text(T("بهالبرامج Enter بيعمل سطر جديد، مش إرسال. النص كله بينحفظ بقسم \"بدون إنتر\" لما تطلع منها.",
+                           "In these apps Enter is a new line, not a send. The whole text is saved under \"Unsent\" when you leave."))
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    AppListEditor(apps: $state.longForm, emptyText: T("ما في برامج", "No apps"))
                 }
 
                 SettingsSection(title: T("الخصوصية", "Privacy")) {
@@ -654,17 +657,6 @@ struct SettingsPane: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func runningApps() -> [ExcludedApp] {
-        let mine = Bundle.main.bundleIdentifier
-        var seen = Set<String>()
-        return NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> ExcludedApp? in
-                guard let id = app.bundleIdentifier, id != mine, !state.isExcluded(id), seen.insert(id).inserted else { return nil }
-                return ExcludedApp(bundleID: id, name: app.localizedName ?? id)
-            }
-            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-    }
 }
 
 struct SettingsSection<Content: View>: View {
@@ -796,3 +788,93 @@ struct ShotCard: View {
     }
 }
 
+
+
+// MARK: - Settings building blocks
+
+/// A list of apps with remove buttons and an "add a running app" menu.
+struct AppListEditor: View {
+    @Binding var apps: [ExcludedApp]
+    let emptyText: String
+
+    var body: some View {
+        if apps.isEmpty {
+            Text(emptyText).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+        ForEach(apps) { app in
+            HStack(spacing: 8) {
+                AppIcon(bundleID: app.bundleID).frame(width: 18, height: 18)
+                    .accessibilityHidden(true)
+                Text(app.name).font(.system(size: 12.5))
+                Spacer()
+                IconButton(symbol: "minus.circle.fill", tint: .red, help: T("إزالة", "Remove") + " " + app.name) {
+                    withAnimation { apps.removeAll { $0.bundleID == app.bundleID } }
+                }
+            }
+        }
+        Menu {
+            ForEach(runningApps(), id: \.bundleID) { app in
+                Button(app.name) { withAnimation { apps.append(app) } }
+            }
+        } label: {
+            Label(T("إضافة برنامج مفتوح", "Add a running app"), systemImage: "plus.circle.fill")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func runningApps() -> [ExcludedApp] {
+        let mine = Bundle.main.bundleIdentifier
+        var seen = Set<String>()
+        return NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { app -> ExcludedApp? in
+                guard let id = app.bundleIdentifier, id != mine, !apps.contains(where: { $0.bundleID == id }),
+                      seen.insert(id).inserted else { return nil }
+                return ExcludedApp(bundleID: id, name: app.localizedName ?? id)
+            }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+}
+
+/// Shows the panel shortcut and lets the user record a new one.
+struct ShortcutRow: View {
+    @ObservedObject var hotkey = HotKey.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "keyboard").foregroundStyle(.secondary)
+                Text(T("فتح اللوحة جنب الماوس", "Open panel at pointer")).font(.system(size: 12.5))
+                Spacer()
+                Button {
+                    hotkey.isRecording.toggle()
+                } label: {
+                    Text(hotkey.isRecording ? T("اضغط الاختصار…", "Press keys…") : hotkey.display)
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(hotkey.isRecording ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.08)))
+                        .overlay(RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(hotkey.isRecording ? Color.accentColor : .clear, lineWidth: 1))
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+                .buttonStyle(.plain)
+                .help(T("اضغط لتغيير الاختصار", "Click to change the shortcut"))
+                .accessibilityLabel(T("الاختصار", "Shortcut") + " " + hotkey.spoken)
+            }
+            if hotkey.isRecording {
+                HStack {
+                    Text(T("اضغط الأزرار الجديدة مع Cmd أو Ctrl أو Option. Esc للإلغاء.",
+                           "Press the new keys with Cmd, Ctrl or Option. Esc to cancel."))
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button(T("افتراضي", "Default")) { hotkey.isRecording = false; hotkey.reset() }
+                        .controlSize(.small)
+                }
+            }
+        }
+    }
+}
