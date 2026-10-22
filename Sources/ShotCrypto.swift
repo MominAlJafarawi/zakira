@@ -2,39 +2,44 @@ import Foundation
 import CryptoKit
 import UniformTypeIdentifiers
 
-/// Clipboard screenshots are stored encrypted (AES-GCM). The key lives in the Keychain,
-/// so other apps, backups or a copied folder cannot open the files.
-enum ShotCrypto {
-    static let fileExtension = "zshot"
-    private static var cachedKey: SymmetricKey?
+/// AES-GCM encryption with keys kept in the Keychain (one key per purpose).
+enum Vault {
+    private static var keys: [String: SymmetricKey] = [:]
 
     /// nil when the Keychain cannot be read: then nothing is saved rather than saving it in the clear.
-    static func key() -> SymmetricKey? {
-        if let cachedKey { return cachedKey }
-        switch SecureStore.read("shots-key") {
+    static func key(_ account: String) -> SymmetricKey? {
+        if let k = keys[account] { return k }
+        switch SecureStore.read(account) {
         case .found(let data) where data.count == 32:
-            cachedKey = SymmetricKey(data: data)
+            keys[account] = SymmetricKey(data: data)
         case .notFound:
             let k = SymmetricKey(size: .bits256)
             let data = k.withUnsafeBytes { Data($0) }
-            guard SecureStore.write(data, account: "shots-key") else { return nil }
-            cachedKey = k
+            guard SecureStore.write(data, account: account) else { return nil }
+            keys[account] = k
         default:
-            DiagLog.write("screenshot key unavailable")
+            DiagLog.write("encryption key unavailable (\(account))")
             return nil
         }
-        return cachedKey
+        return keys[account]
     }
 
-    static func seal(_ plain: Data) -> Data? {
-        guard let k = key(), let box = try? AES.GCM.seal(plain, using: k) else { return nil }
+    static func seal(_ plain: Data, account: String) -> Data? {
+        guard let k = key(account), let box = try? AES.GCM.seal(plain, using: k) else { return nil }
         return box.combined
     }
 
-    static func open(_ sealed: Data) -> Data? {
-        guard let k = key(), let box = try? AES.GCM.SealedBox(combined: sealed) else { return nil }
+    static func open(_ sealed: Data, account: String) -> Data? {
+        guard let k = key(account), let box = try? AES.GCM.SealedBox(combined: sealed) else { return nil }
         return try? AES.GCM.open(box, using: k)
     }
+}
+
+/// Clipboard screenshots are stored encrypted, so other apps, backups or a copied folder cannot open them.
+enum ShotCrypto {
+    static let fileExtension = "zshot"
+    static func seal(_ plain: Data) -> Data? { Vault.seal(plain, account: "shots-key") }
+    static func open(_ sealed: Data) -> Data? { Vault.open(sealed, account: "shots-key") }
 }
 
 extension Shot {

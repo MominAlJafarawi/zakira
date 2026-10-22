@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         DiagLog.write("launch v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
         ClipboardWatcher.shared.start()
         ScreenshotWatcher.shared.start()
+        Updates.shared.start()
         HotKey.shared.onPress = { [weak self] in self?.toggleAtMouse() }
         HotKey.shared.register()
         startCapture()
@@ -190,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installKeyMonitor()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        HistoryStore.save()
+    }
+
     func popoverDidClose(_ notification: Notification) {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
@@ -254,7 +259,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func copyShot(_ shot: Shot) {
         state.copyImage(shot)
-        withAnimation(.easeOut(duration: 0.15)) { ui.flashURL = shot.url }
+        withAnimation(motion(.easeOut(duration: 0.15))) { ui.flashURL = shot.url }
+        announce(T("تم النسخ", "Copied"))
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 650_000_000)
             self.popover.performClose(nil)
@@ -263,8 +269,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func copy(_ entry: Entry) {
-        state.copyToPasteboard(entry.text)
-        withAnimation(.easeOut(duration: 0.15)) { ui.flashID = entry.id }
+        if let data = entry.image, let img = NSImage(data: data) {
+            state.copyImageObject(img)
+        } else {
+            state.copyToPasteboard(entry.text)
+        }
+        withAnimation(motion(.easeOut(duration: 0.15))) { ui.flashID = entry.id }
+        announce(T("تم النسخ", "Copied"))
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 550_000_000)
             self.popover.performClose(nil)

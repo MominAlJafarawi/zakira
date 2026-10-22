@@ -7,6 +7,10 @@ struct Entry: Identifiable, Codable, Equatable {
     var appName: String
     var bundleID: String?
     var date: Date
+    /// A copied image (PNG). Kept in memory only, never saved or pinned.
+    var image: Data? = nil
+
+    var isImage: Bool { image != nil }
 
     /// true when the first strong letter is Arabic/Hebrew, so the card is shown right-to-left
     var isRTL: Bool {
@@ -61,12 +65,37 @@ enum Tab: Int, CaseIterable {
 @MainActor
 final class AppState: ObservableObject {
     static let shared = AppState()
-    static let maxItems = 10
+    static let limitChoices = [10, 25, 50]
+    /// How many items each list keeps (10, 25 or 50).
+    static var maxItems: Int {
+        let v = UserDefaults.standard.integer(forKey: "historyLimit")
+        return limitChoices.contains(v) ? v : 10
+    }
 
     // History lives in memory only and is gone when the app quits.
-    @Published var typed: [Entry] = []
-    @Published var drafts: [Entry] = []
-    @Published var copied: [Entry] = []
+    @Published var typed: [Entry] = [] { didSet { HistoryStore.scheduleSave() } }
+    @Published var drafts: [Entry] = [] { didSet { HistoryStore.scheduleSave() } }
+    @Published var copied: [Entry] = [] { didSet { HistoryStore.scheduleSave() } }
+
+    @Published var historyLimit = AppState.maxItems {
+        didSet {
+            UserDefaults.standard.set(historyLimit, forKey: "historyLimit")
+            for keyPath in [\AppState.typed, \AppState.drafts, \AppState.copied] where self[keyPath: keyPath].count > historyLimit {
+                self[keyPath: keyPath] = Array(self[keyPath: keyPath].prefix(historyLimit))
+            }
+            ScreenshotWatcher.shared.publish()
+        }
+    }
+    /// Keep the history (encrypted) after quitting or restarting, for keepDays days.
+    @Published var keepAfterRestart = UserDefaults.standard.bool(forKey: "keepAfterRestart") {
+        didSet {
+            UserDefaults.standard.set(keepAfterRestart, forKey: "keepAfterRestart")
+            if keepAfterRestart { HistoryStore.save() } else { HistoryStore.delete() }
+        }
+    }
+    @Published var keepDays = UserDefaults.standard.object(forKey: "keepDays") as? Int ?? 1 {
+        didSet { UserDefaults.standard.set(keepDays, forKey: "keepDays") }
+    }
     @Published var shots: [Shot] = []
 
     // Pinned items are saved encrypted in the Keychain; settings in the normal preferences file.
@@ -136,6 +165,11 @@ final class AppState: ObservableObject {
         longForm = UserDefaults.standard.object(forKey: "longForm") == nil
             ? Self.defaultLongForm
             : (load([ExcludedApp].self, key: "longForm") ?? Self.defaultLongForm)
+        if keepAfterRestart, let saved = HistoryStore.load(maxAgeDays: keepDays) {
+            HistoryStore.loading = true
+            typed = saved.typed; drafts = saved.drafts; copied = saved.copied
+            HistoryStore.loading = false
+        }
         if !UserDefaults.standard.bool(forKey: "terminalsExcluded") {
             for t in Self.terminalApps where !excluded.contains(where: { $0.bundleID == t.bundleID }) {
                 excluded.append(t)
@@ -246,7 +280,7 @@ final class AppState: ObservableObject {
     }
 
     private func insert(_ entry: Entry, into list: inout [Entry]) {
-        list.removeAll { $0.text == entry.text }
+        list.removeAll { $0.text == entry.text && $0.image == entry.image }
         list.insert(entry, at: 0)
         if list.count > Self.maxItems { list.removeLast(list.count - Self.maxItems) }
     }
@@ -304,6 +338,20 @@ final class AppState: ObservableObject {
         typed.removeAll()
         drafts.removeAll()
         copied.removeAll()
+    }
+
+    func copyImageObject(_ img: NSImage) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([img])
+        ownChangeCount = pb.changeCount
+    }
+
+    /// A copied image that is not a screenshot (from a browser, Preview, Photos…).
+    func addCopiedImage(_ png: Data, app: NSRunningApplication?) {
+        var e = makeEntry("", app)
+        e.image = png
+        insert(e, into: &copied)
     }
 
     func copyToPasteboard(_ text: String) {

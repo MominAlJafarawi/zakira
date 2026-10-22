@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Carbon.HIToolbox
 import IOKit.hid
 
@@ -377,7 +378,11 @@ final class ClipboardWatcher {
         }
     }
 
+    /// Last time macOS's own screenshot tool was running (it handles Cmd+Ctrl+Shift+3/4).
+    private var lastCaptureToolSeen = Date.distantPast
+
     private func check() {
+        if ScreenCaptureTool.isRunning() { lastCaptureToolSeen = Date() }
         let pb = NSPasteboard.general
         guard pb.changeCount != lastCount else { return }
         lastCount = pb.changeCount
@@ -385,32 +390,52 @@ final class ClipboardWatcher {
         if (pb.types ?? []).contains(where: { secretTypes.contains($0.rawValue) }) { return }
         let front = NSWorkspace.shared.frontmostApplication
         if state.isExcluded(front?.bundleIdentifier) { return }
-        if saveClipboardScreenshot(pb) { return }
-        guard let raw = pb.string(forType: .string) else { return }
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= 20000 else { return }
-        state.addCopied(text, app: front)
+        if let raw = pb.string(forType: .string) {
+            let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text.count <= 20000 else { return }
+            state.addCopied(text, app: front)
+            return
+        }
+        guard let png = imagePNG(pb) else { return }
+        let fromScreenshotTool = Date().timeIntervalSince(lastCaptureToolSeen) < 3
+        DiagLog.detail("image copied: screenshot tool=\(fromScreenshotTool)")
+        if fromScreenshotTool {
+            ScreenshotWatcher.shared.saveClipboardShot(png)
+        } else {
+            state.addCopiedImage(png, app: front)
+        }
     }
 
-    /// Cmd+Ctrl+Shift+3/4 put the screenshot only on the clipboard (no file).
-    /// A clipboard holding only an image (no text, link or file) is treated as such a screenshot
-    /// and saved to the app's own folder so it shows in the Screenshots tab.
-    private func saveClipboardScreenshot(_ pb: NSPasteboard) -> Bool {
+    /// The clipboard image as PNG, or nil (no image, a file, or larger than 15 MB).
+    private func imagePNG(_ pb: NSPasteboard) -> Data? {
         let types = Set((pb.types ?? []).map(\.rawValue))
-        let imageTypes: Set<String> = ["public.png", "public.tiff", "Apple PNG pasteboard type", "NeXT TIFF v4.0 pasteboard type"]
-        guard !types.isDisjoint(with: imageTypes) else { return false }
-        let other: Set<String> = ["public.utf8-plain-text", "public.url", "public.file-url", "public.html", "public.rtf", "NSStringPboardType", "NSFilenamesPboardType"]
-        guard types.isDisjoint(with: other) else { return false }
-        let png: Data?
+        if types.contains("public.file-url") { return nil }
+        var png: Data?
         if let data = pb.data(forType: .png) {
             png = data
         } else if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff) {
             png = rep.representation(using: .png, properties: [:])
-        } else {
-            png = nil
         }
-        guard let png else { return false }
-        ScreenshotWatcher.shared.saveClipboardShot(png)
-        return true
+        guard let png, png.count <= 15_000_000 else { return nil }
+        return png
+    }
+}
+
+
+/// Detects macOS's screenshot tool (screencaptureui / screencapture) by process name.
+enum ScreenCaptureTool {
+    static func isRunning() -> Bool {
+        let count = proc_listallpids(nil, 0)
+        guard count > 0 else { return false }
+        var pids = [pid_t](repeating: 0, count: Int(count) + 32)
+        let n = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
+        var name = [CChar](repeating: 0, count: 256)
+        for pid in pids.prefix(Int(max(n, 0))) where pid > 0 {
+            if proc_name(pid, &name, UInt32(name.count)) > 0 {
+                let s = String(cString: name)
+                if s == "screencaptureui" || s == "screencapture" { return true }
+            }
+        }
+        return false
     }
 }

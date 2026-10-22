@@ -9,6 +9,10 @@ final class ScreenshotWatcher {
     private let query = NSMetadataQuery()
     private let state = AppState.shared
     private var spotlightShots: [Shot] = []
+    /// Screenshots found by watching the save folder directly (works without Spotlight).
+    private var watchedShots: [Shot] = []
+    private var folderSource: DispatchSourceFileSystemObject?
+    private var watchedFolder: URL?
     private var cleanupTimer: Timer?
 
     /// Folder for screenshots that only went to the clipboard. Only the newest few are kept.
@@ -77,7 +81,8 @@ final class ScreenshotWatcher {
     }
 
     func publish() {
-        var all = spotlightShots + folderShots()
+        var seen = Set<URL>()
+        var all = (watchedShots + spotlightShots + folderShots()).filter { seen.insert($0.url.standardizedFileURL).inserted }
         all.sort { $0.date > $1.date }
         let top = Array(all.prefix(AppState.maxItems))
         if top != state.shots { state.shots = top }
@@ -94,16 +99,68 @@ final class ScreenshotWatcher {
             }
         }
         query.start()
+        watchSaveFolder()
         encryptOldFiles()
         pruneFolder()
         publish()
         // Check again every 6 hours, so old ones are cleaned even if the Mac is never restarted.
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
             MainActor.assumeIsolated {
+                ScreenshotWatcher.shared.watchSaveFolder()   // the user may have changed the location
                 ScreenshotWatcher.shared.pruneFolder()
                 ScreenshotWatcher.shared.publish()
             }
         }
+    }
+
+    /// Where macOS saves screenshots: the "location" setting, or the Desktop.
+    static func saveFolder() -> URL {
+        if let loc = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location"), !loc.isEmpty {
+            let url = URL(fileURLWithPath: (loc as NSString).expandingTildeInPath, isDirectory: true)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue { return url }
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+    }
+
+    /// macOS marks every screenshot file with this attribute.
+    static func isScreenshotFile(_ url: URL) -> Bool {
+        getxattr(url.path, "com.apple.metadata:kMDItemIsScreenCapture", nil, 0, 0, 0) >= 0
+    }
+
+    func watchSaveFolder() {
+        let folder = Self.saveFolder()
+        if folder != watchedFolder {
+            folderSource?.cancel()
+            folderSource = nil
+            watchedFolder = folder
+            let fd = open(folder.path, O_EVTONLY)
+            if fd >= 0 {
+                let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
+                src.setEventHandler {
+                    MainActor.assumeIsolated { ScreenshotWatcher.shared.scanSaveFolder() }
+                }
+                src.setCancelHandler { close(fd) }
+                src.resume()
+                folderSource = src
+            } else {
+                DiagLog.write("cannot watch screenshot folder")
+            }
+        }
+        scanSaveFolder()
+    }
+
+    func scanSaveFolder() {
+        guard let folder = watchedFolder else { return }
+        let keys: [URLResourceKey] = [.creationDateKey, .isRegularFileKey]
+        let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        let images: Set<String> = ["png", "jpg", "jpeg", "heic", "tiff", "pdf"]
+        let shots = urls
+            .filter { images.contains($0.pathExtension.lowercased()) && Self.isScreenshotFile($0) }
+            .map { Shot(url: $0, date: (try? $0.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast) }
+            .sorted { $0.date > $1.date }
+        watchedShots = Array(shots.prefix(AppState.maxItems))
+        publish()
     }
 
     private func refresh() {

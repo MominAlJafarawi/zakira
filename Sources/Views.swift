@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ImageIO
 
 struct Actions {
     var copy: (Entry) -> Void
@@ -35,6 +36,7 @@ struct ContentView: View {
                     if !state.captureActive {
                         PermissionBanner(actions: actions)
                     }
+                    UpdateBanner()
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
@@ -131,7 +133,7 @@ struct TabBar: View {
             ForEach(Tab.bar, id: \.self) { tab in
                 let active = ui.tab == tab || (tab == .typed && ui.tab == .drafts)
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { ui.tab = tab }
+                    withAnimation(motion(.spring(response: 0.3, dampingFraction: 0.85))) { ui.tab = tab }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: tab.icon).font(.system(size: 11, weight: .semibold))
@@ -158,6 +160,8 @@ struct TabBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("\(tab.title), \(tab == .typed ? state.typed.count + state.drafts.count : state.count(for: tab))")
+                .accessibilityAddTraits(active ? .isSelected : [])
             }
         }
         .padding(3)
@@ -182,7 +186,7 @@ struct TypedSwitch: View {
     private func chip(_ tab: Tab, label: String, count: Int) -> some View {
         let active = ui.tab == tab
         return Button {
-            withAnimation(.easeOut(duration: 0.15)) { ui.tab = tab }
+            withAnimation(motion(.easeOut(duration: 0.15))) { ui.tab = tab }
         } label: {
             HStack(spacing: 4) {
                 Text(label).font(.system(size: 11.5, weight: active ? .semibold : .regular))
@@ -259,8 +263,8 @@ struct EntryList: View {
                                           flashed: ui.flashID == entry.id,
                                           pinned: state.isPinned(entry),
                                           onCopy: { actions.copy(entry) },
-                                          onPin: { withAnimation(.easeOut(duration: 0.2)) { state.togglePin(entry) } },
-                                          onDelete: { withAnimation(.easeOut(duration: 0.2)) { state.delete(entry, from: ui.tab) } })
+                                          onPin: { withAnimation(motion(.easeOut(duration: 0.2))) { state.togglePin(entry) } },
+                                          onDelete: { withAnimation(motion(.easeOut(duration: 0.2))) { state.delete(entry, from: ui.tab) } })
                                     .id(entry.id)
                                     .transition(.asymmetric(insertion: .scale(scale: 0.96).combined(with: .opacity),
                                                             removal: .opacity))
@@ -271,7 +275,7 @@ struct EntryList: View {
                     }
                     .onChange(of: ui.selected) { _, newValue in
                         if items.indices.contains(newValue) {
-                            withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(items[newValue].id, anchor: .center) }
+                            withAnimation(motion(.easeOut(duration: 0.15))) { proxy.scrollTo(items[newValue].id, anchor: .center) }
                         }
                     }
                 }
@@ -298,12 +302,22 @@ struct EntryCard: View {
                 .frame(width: 22, height: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                Text(entry.text)
-                    .font(.system(size: 13.5))
-                    .lineSpacing(2)
-                    .lineLimit(hovering ? 8 : 2)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let data = entry.image, let img = ImageCache.image(for: entry.id, data: data) {
+                    Image(nsImage: img)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 110, alignment: .leading)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .accessibilityHidden(true)
+                } else {
+                    Text(entry.text)
+                        .font(.system(size: 13.5))
+                        .lineSpacing(2)
+                        .lineLimit(hovering ? 8 : 2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 TimelineView(.periodic(from: .now, by: 30)) { _ in
                     HStack(spacing: 4) {
                         if pinned && tab != .pinned {
@@ -333,10 +347,12 @@ struct EntryCard: View {
         .overlay(alignment: .topTrailing) {
             if hovering && !flashed {
                 HStack(spacing: 2) {
-                    IconButton(symbol: tab == .pinned ? "pin.slash" : (pinned ? "pin.fill" : "pin"),
-                               tint: pinned ? .orange : .secondary,
-                               help: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin"),
-                               action: onPin)
+                    if !entry.isImage {
+                        IconButton(symbol: tab == .pinned ? "pin.slash" : (pinned ? "pin.fill" : "pin"),
+                                   tint: pinned ? .orange : .secondary,
+                                   help: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin"),
+                                   action: onPin)
+                    }
                     IconButton(symbol: "trash", tint: .red, help: T("حذف", "Delete"), action: onDelete)
                 }
                 .padding(3)
@@ -360,8 +376,20 @@ struct EntryCard: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture(perform: onCopy)
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
+        .onHover { h in withAnimation(motion(.easeOut(duration: 0.15))) { hovering = h } }
         .help(T("اضغط للنسخ", "Click to copy"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityHint(T("اضغط للنسخ", "Click to copy"))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onCopy() }
+        .accessibilityAction(named: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin")) { if !entry.isImage { onPin() } }
+        .accessibilityAction(named: T("حذف", "Delete")) { onDelete() }
+    }
+
+    private var accessibilityText: String {
+        let what = entry.isImage ? T("صورة منسوخة", "Copied image") : entry.text
+        return "\(what), \(entry.appName), \(relativeTime(entry.date))" + (pinned ? ", " + T("مثبتة", "pinned") : "")
     }
 
     private func relative(_ date: Date) -> String { relativeTime(date) }
@@ -385,6 +413,7 @@ struct IconButton: View {
         .buttonStyle(.plain)
         .onHover { hover = $0 }
         .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -468,7 +497,7 @@ struct Footer: View {
             Divider().opacity(0.6)
             HStack(spacing: 6) {
                 Button {
-                    withAnimation { state.paused.toggle() }
+                    withAnimation(motion()) { state.paused.toggle() }
                 } label: {
                     Label(state.paused ? T("تشغيل", "Resume") : T("إيقاف مؤقت", "Pause"),
                           systemImage: state.paused ? "play.fill" : "pause.fill")
@@ -494,7 +523,7 @@ struct Footer: View {
 
                 IconButton(symbol: ui.showSettings ? "xmark" : "gearshape", tint: .secondary,
                            help: T("الإعدادات", "Settings")) {
-                    withAnimation(.easeOut(duration: 0.2)) { ui.showSettings.toggle() }
+                    withAnimation(motion(.easeOut(duration: 0.2))) { ui.showSettings.toggle() }
                 }
                 IconButton(symbol: "power", tint: .secondary, help: T("إنهاء البرنامج", "Quit Zakira"), action: actions.quit)
             }
@@ -579,6 +608,47 @@ struct SettingsPane: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
 
+                SettingsSection(title: T("السجل", "History")) {
+                    HStack {
+                        Text(T("عدد العناصر بكل قائمة", "Items per list")).font(.system(size: 12.5))
+                        Spacer()
+                        Picker("", selection: $state.historyLimit) {
+                            ForEach(AppState.limitChoices, id: \.self) { Text("\($0)").tag($0) }
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 130)
+                    }
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(T("احفظ بعد إعادة التشغيل", "Keep after restart")).font(.system(size: 12.5))
+                            Text(T("بينحفظ مشفّر على جهازك، وبينمسح لحاله بعد المدة اللي بتختارها. الصور المنسوخة ما بتنحفظ.",
+                                   "Stored encrypted on your Mac and deleted after the time you choose. Copied images are not kept."))
+                                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $state.keepAfterRestart).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    if state.keepAfterRestart {
+                        Picker(T("المدة", "Keep for"), selection: $state.keepDays) {
+                            Text(T("يوم", "1 day")).tag(1)
+                            Text(T("أسبوع", "1 week")).tag(7)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    Divider()
+                    HStack(spacing: 8) {
+                        Button(T("تصدير المثبتة…", "Export pinned…")) { PinTransfer.exportPinned() }
+                        Button(T("استيراد…", "Import…")) { PinTransfer.importPinned() }
+                    }
+                    .controlSize(.small)
+                    Text(T("ملف محمي بكلمة سر، لتنقل الجمل المثبتة لماك تاني.", "A password-protected file to move pinned text to another Mac."))
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+
+                SettingsSection(title: T("التحديثات", "Updates")) {
+                    UpdatesSettings()
+                }
+
                 SettingsSection(title: T("الدعم", "Support")) {
                     HStack {
                         Image(systemName: "stethoscope").foregroundStyle(.secondary)
@@ -624,7 +694,7 @@ struct SettingsPane: View {
                 }
 
                 SettingsSection(title: T("الخصوصية", "Privacy")) {
-                    Text(T("آخر الجمل والنسخ محفوظة بالذاكرة بس، وبتنمحي لما تسكّر البرنامج. الجمل المثبتة بتنحفظ مشفّرة على جهازك. لقطات الحافظة بتنمسح لحالها بعد أسبوع. ما في أي شي بيطلع على الإنترنت، وحقول الباسوورد ماك بيحجبها تلقائياً.", "Recent text and copies live in memory only and are gone when you quit. Pinned text is stored encrypted on your Mac. Clipboard screenshots are deleted after a week. Nothing ever leaves your Mac, and macOS blocks password fields automatically."))
+                    Text(T("آخر الجمل والنسخ بالذاكرة بس، إلا إذا شغّلت \"احفظ بعد إعادة التشغيل\". كل شي بينحفظ على الجهاز مشفّر. أرقام البطاقات والأكواد والباسوردات ما بتنحفظ أبداً. لقطات الحافظة بتنمسح بعد أسبوع. ما في أي شي بيطلع على الإنترنت.", "Recent text and copies stay in memory unless you turn on \"Keep after restart\". Everything saved on disk is encrypted. Card numbers, codes and passwords are never saved. Clipboard screenshots are deleted after a week. Nothing leaves your Mac."))
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -636,7 +706,7 @@ struct SettingsPane: View {
                     }
                     .controlSize(.small)
                     .confirmationDialog(T("أكيد بدك تمسح السجل؟ الجمل المثبتة ما بتنمسح.", "Clear the history? Pinned text is kept."), isPresented: $confirmClear) {
-                        Button(T("مسح", "Clear"), role: .destructive) { withAnimation { state.clearHistory() } }
+                        Button(T("مسح", "Clear"), role: .destructive) { withAnimation(motion()) { state.clearHistory() } }
                         Button(T("إلغاء", "Cancel"), role: .cancel) {}
                     }
                 }
@@ -701,7 +771,7 @@ struct ShotList: View {
             }
             .onChange(of: ui.selected) { _, i in
                 if state.shots.indices.contains(i) {
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(state.shots[i].url, anchor: .center) }
+                    withAnimation(motion(.easeOut(duration: 0.15))) { proxy.scrollTo(state.shots[i].url, anchor: .center) }
                 }
             }
         }
@@ -783,8 +853,29 @@ struct ShotCard: View {
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture(perform: onCopy)
         .onDrag { shot.dragProvider() }
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
+        .onHover { h in withAnimation(motion(.easeOut(duration: 0.15))) { hovering = h } }
         .help(T("اضغط للنسخ، أو اسحبها لأي برنامج", "Click to copy, or drag into any app"))
+        .modifier(ShotAccessibility(shot: shot, selected: selected, onCopy: onCopy))
+    }
+}
+
+struct ShotAccessibility: ViewModifier {
+    let shot: Shot
+    let selected: Bool
+    let onCopy: () -> Void
+
+    func body(content: Content) -> some View {
+        let label: String = T("لقطة شاشة", "Screenshot") + ", " + relativeTime(shot.date)
+        let traits: AccessibilityTraits = selected ? [.isButton, .isSelected] : .isButton
+        return content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityHint(T("اضغط للنسخ", "Click to copy"))
+            .accessibilityAddTraits(traits)
+            .accessibilityAction { onCopy() }
+            .accessibilityAction(named: T("فتح بـ Preview", "Open in Preview")) {
+                if let u = shot.viewableURL() { NSWorkspace.shared.open(u) }
+            }
     }
 }
 
@@ -808,13 +899,13 @@ struct AppListEditor: View {
                 Text(app.name).font(.system(size: 12.5))
                 Spacer()
                 IconButton(symbol: "minus.circle.fill", tint: .red, help: T("إزالة", "Remove") + " " + app.name) {
-                    withAnimation { apps.removeAll { $0.bundleID == app.bundleID } }
+                    withAnimation(motion()) { apps.removeAll { $0.bundleID == app.bundleID } }
                 }
             }
         }
         Menu {
             ForEach(runningApps(), id: \.bundleID) { app in
-                Button(app.name) { withAnimation { apps.append(app) } }
+                Button(app.name) { withAnimation(motion()) { apps.append(app) } }
             }
         } label: {
             Label(T("إضافة برنامج مفتوح", "Add a running app"), systemImage: "plus.circle.fill")
@@ -875,6 +966,67 @@ struct ShortcutRow: View {
                         .controlSize(.small)
                 }
             }
+        }
+    }
+}
+
+
+/// Thumbnails for copied images, made once per item.
+@MainActor
+enum ImageCache {
+    private static var cache: [UUID: NSImage] = [:]
+
+    static func image(for id: UUID, data: Data) -> NSImage? {
+        if let img = cache[id] { return img }
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceThumbnailMaxPixelSize: 520,
+                                     kCGImageSourceCreateThumbnailWithTransform: true]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        if cache.count > 120 { cache.removeAll() }
+        cache[id] = img
+        return img
+    }
+}
+
+
+// MARK: - Updates
+
+struct UpdateBanner: View {
+    @ObservedObject var updates = Updates.shared
+    var body: some View {
+        if let v = updates.available {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                Text(T("في نسخة جديدة: \(v)", "New version available: \(v)")).font(.system(size: 12, weight: .medium))
+                Spacer()
+                Button(T("تنزيل", "Download")) { updates.openReleases() }.controlSize(.small)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.1)))
+        }
+    }
+}
+
+struct UpdatesSettings: View {
+    @ObservedObject var updates = Updates.shared
+    var body: some View {
+        HStack {
+            Text(T("النسخة الحالية", "Current version") + " " + Updates.currentVersion).font(.system(size: 12.5))
+            Spacer()
+            Button(T("تحقّق من التحديثات", "Check for updates")) { updates.openReleases() }.controlSize(.small)
+        }
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("تحقّق تلقائياً كل أسبوع", "Check automatically every week")).font(.system(size: 12.5))
+                Text(T("مطفي افتراضياً. إذا شغّلته، بيسأل GitHub عن رقم آخر نسخة بس، وما بيبعت أي بيانات عنك.",
+                       "Off by default. When on, it only asks GitHub for the latest version number and sends nothing about you."))
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: $updates.autoCheck).labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
     }
 }

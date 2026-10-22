@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -56,4 +57,18 @@ func relativeTime(_ date: Date) -> String {
 enum Credits {
     static let author = "Momen Jafarawi"
     static let repo = URL(string: "https://github.com/MomenJafarawi/zakira")!
+}
+
+
+/// Animations are skipped when "Reduce motion" is on in System Settings → Accessibility.
+@MainActor
+func motion(_ animation: Animation? = .default) -> Animation? {
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : animation
+}
+
+/// Tells VoiceOver something happened (e.g. "Copied").
+@MainActor
+func announce(_ text: String) {
+    NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                         userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
 }

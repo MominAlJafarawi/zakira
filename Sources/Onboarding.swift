@@ -229,7 +229,7 @@ struct OnboardingView: View {
     }
 
     private func go(_ p: Int) {
-        withAnimation(.easeInOut(duration: 0.25)) { page = max(0, min(pageCount - 1, p)) }
+        withAnimation(motion(.easeInOut(duration: 0.25))) { page = max(0, min(pageCount - 1, p)) }
     }
 }
 
