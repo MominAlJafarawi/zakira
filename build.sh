@@ -1,5 +1,6 @@
 #!/bin/zsh
-# Builds "ذاكرة الكتابة" into build/Zakira.app
+# Builds Zakira (universal) and installs it to /Applications.
+# ./build.sh --no-install only builds (used by CI and make-dmg.sh --no-install).
 set -e
 cd "$(dirname "$0")"
 STAGE="${TMPDIR:-/tmp}/zakira-build"
@@ -37,6 +38,10 @@ if security find-identity -p codesigning | grep -q "$IDENTITY"; then
 else
   echo "WARNING: certificate \"$IDENTITY\" not found, using weaker ad-hoc signature"
   codesign --force --sign - -r='designated => identifier "com.momen.zakira"' "$APP"
+fi
+if [ "$1" = "--no-install" ]; then
+  echo "Built $APP (not installed)"
+  exit 0
 fi
 DEST=/Applications/Zakira.app
 rm -rf "$DEST"

@@ -6,12 +6,13 @@ by Momen Jafarawi · https://github.com/MomenJafarawi/zakira
 Install (one minute):
 1) Drag Zakira onto the Applications folder next to it.
 2) Open Applications and start Zakira.
-3) If macOS says the developer cannot be verified:
-   System Settings → Privacy & Security → scroll down → "Open Anyway".
-   (Zakira is not signed with a paid Apple Developer ID. This is needed once.)
+3) macOS blocks it the first time (Zakira is not signed with a paid Apple Developer ID):
+   click "Done", then System Settings → Privacy & Security → scroll down → "Open Anyway".
+   This is needed once.
+   Optional: check the download with  shasum -a 256 Zakira-*.dmg  (compare with the .sha256 file).
 4) A short guide opens. The key step is the "Input Monitoring" permission.
 
-Use: click the brain icon in the menu bar, or press Ctrl + Cmd + V anywhere.
+Use: click the brain icon in the menu bar, or press Ctrl + Cmd + V anywhere (changeable in Settings).
 Click any line or image to copy it.
 
 Requires macOS 14 (Sonoma) or later, Apple Silicon or Intel.
@@ -25,12 +26,13 @@ Uninstall: in ⚙️ turn off "Open at login", then drag Zakira to the Trash.
 التثبيت (دقيقة وحدة):
 1) اسحب أيقونة Zakira على مجلد Applications اللي جنبها.
 2) افتح مجلد Applications وشغّل Zakira.
-3) إذا ماك قال إنه "لا يمكن التحقق من المطوّر":
-   الإعدادات ← Privacy & Security ← انزل لتحت ← "Open Anyway".
-   (البرنامج مش موقّع بحساب مطوّر مدفوع من Apple، والخطوة هاي مرة وحدة بس.)
+3) أول مرة ماك رح يمنعه (البرنامج مش موقّع بحساب مطوّر مدفوع من Apple):
+   اضغط "Done"، وبعدين الإعدادات ← Privacy & Security ← انزل لتحت ← "Open Anyway".
+   مرة وحدة بس.
+   اختياري: تأكد من الملف بأمر  shasum -a 256 Zakira-*.dmg  وقارنه بملف .sha256
 4) بيفتحلك دليل قصير. أهم خطوة فيه: تفعيل إذن "Input Monitoring".
 
-الاستعمال: اضغط أيقونة المخ فوق، أو Ctrl + Cmd + V من أي مكان.
+الاستعمال: اضغط أيقونة المخ فوق، أو Ctrl + Cmd + V من أي مكان (بتقدر تغيّره من الإعدادات).
 كبسة على أي سطر أو صورة بتنسخه.
 
 بيشتغل على macOS 14 (Sonoma) أو أحدث، أجهزة Apple Silicon و Intel.

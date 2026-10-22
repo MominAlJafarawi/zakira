@@ -29,6 +29,14 @@ final class KeyCapture {
 
     private var buffer: String { String(chars) }
 
+    /// Tests pin a known layout (e.g. "com.apple.keylayout.US") so they run on any Mac.
+    static var layoutOverride: TISInputSource? = {
+        guard let id = ProcessInfo.processInfo.environment["ZAKIRA_TEST_LAYOUT"] else { return nil }
+        let filter = [kTISPropertyInputSourceID as String: id] as CFDictionary
+        guard let list = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource] else { return nil }
+        return list.first
+    }()
+
     func start() -> Bool {
         if tap != nil { return true }
         let pre = CGPreflightListenEventAccess()
@@ -223,7 +231,7 @@ final class KeyCapture {
 
     /// Uses the active keyboard layout, keeping dead-key state between presses (^ + e = ê).
     private func translate(keyCode: Int, flags: CGEventFlags) -> String? {
-        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+        guard let source = Self.layoutOverride ?? TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let ptr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
         let layoutData = Unmanaged<CFData>.fromOpaque(ptr).takeUnretainedValue() as Data
         var mods: UInt32 = 0

@@ -2,7 +2,7 @@
 # Builds the app, then packs it as dist/Zakira-<version>.dmg for sharing (USB stick, AirDrop, email).
 set -e
 cd "$(dirname "$0")"
-./build.sh
+./build.sh "$@"
 VERSION=$(defaults read "$PWD/Info.plist" CFBundleShortVersionString)
 STAGE="${TMPDIR:-/tmp}/zakira-build"
 DMGROOT="$STAGE/dmg"
@@ -16,4 +16,6 @@ hdiutil create -volname "Zakira" -srcfolder "$DMGROOT" -ov -format UDZO "$STAGE/
 mkdir -p dist
 cp "$STAGE/Zakira.dmg" "dist/Zakira-$VERSION.dmg"
 find . -name "._*" -delete 2>/dev/null || true
+(cd dist && shasum -a 256 "Zakira-$VERSION.dmg" > "Zakira-$VERSION.dmg.sha256")
 echo "DMG: $PWD/dist/Zakira-$VERSION.dmg"
+cat "dist/Zakira-$VERSION.dmg.sha256"

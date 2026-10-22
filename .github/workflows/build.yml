@@ -1,0 +1,38 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: ./test.sh
+
+      - name: Build universal app and DMG
+        run: ./make-dmg.sh --no-install
+
+      - name: Check the app runs on both Apple Silicon and Intel
+        run: |
+          ARCHS=$(lipo -archs "${TMPDIR:-/tmp}/zakira-build/Zakira.app/Contents/MacOS/Zakira")
+          echo "$ARCHS"
+          echo "$ARCHS" | grep -q arm64 && echo "$ARCHS" | grep -q x86_64
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zakira-dmg
+          path: |
+            dist/*.dmg
+            dist/*.sha256

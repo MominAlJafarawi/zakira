@@ -3,7 +3,13 @@ import Security
 
 /// Keeps pinned items encrypted in the user's Keychain instead of a plain settings file.
 enum SecureStore {
-    static let service = "com.momen.zakira"
+    /// Tests and README screenshots (ZAKIRA_DEMO) use their own Keychain service, never the real one.
+    static let service = ProcessInfo.processInfo.environment["ZAKIRA_DEMO"] != nil ? "com.momen.zakira.test" : "com.momen.zakira"
+
+    /// Removes every item of the current service (used by the tests to clean up).
+    static func deleteAll() {
+        SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service] as CFDictionary)
+    }
 
     enum ReadResult {
         case found(Data)
