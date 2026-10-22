@@ -509,6 +509,7 @@ struct Footer: View {
 struct SettingsPane: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var lang: Lang
+    @State private var diagnostic = DiagLog.diagnosticOn
     let actions: Actions
     @State private var confirmClear = false
 
@@ -558,6 +559,26 @@ struct SettingsPane: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
+
+                SettingsSection(title: T("الدعم", "Support")) {
+                    HStack {
+                        Image(systemName: "stethoscope").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(T("وضع التشخيص", "Diagnostic mode")).font(.system(size: 12.5))
+                            Text(T("بيسجّل تفاصيل أكتر لحل المشاكل (بدون نصوص)، وبينطفي لحاله بعد 24 ساعة.",
+                                   "Logs more detail to fix problems (never your text). Turns off by itself after 24 hours."))
+                                .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(get: { diagnostic }, set: { DiagLog.setDiagnostic($0); diagnostic = DiagLog.diagnosticOn }))
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    Button(T("إظهار ملف السجل", "Show log file")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([DiagLog.url])
+                    }
+                    .controlSize(.small)
+                }
 
                 SettingsSection(title: T("اللغة", "Language")) {
                     Picker("", selection: $lang.choice) {
@@ -707,7 +728,7 @@ struct ShotCard: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.primary.opacity(0.06))
-                if let img = Thumbnails.image(for: shot.url) {
+                if let img = Thumbnails.image(for: shot) {
                     Image(nsImage: img)
                         .resizable()
                         .interpolation(.high)
@@ -740,10 +761,12 @@ struct ShotCard: View {
             if hovering && !flashed {
                 HStack(spacing: 2) {
                     IconButton(symbol: "eye", tint: .secondary, help: T("فتح بـ Preview", "Open in Preview")) {
-                        NSWorkspace.shared.open(shot.url)
+                        if let u = shot.viewableURL() { NSWorkspace.shared.open(u) }
                     }
-                    IconButton(symbol: "folder", tint: .secondary, help: T("إظهار بالـ Finder", "Show in Finder")) {
-                        NSWorkspace.shared.activateFileViewerSelecting([shot.url])
+                    if !shot.isEncrypted {
+                        IconButton(symbol: "folder", tint: .secondary, help: T("إظهار بالـ Finder", "Show in Finder")) {
+                            NSWorkspace.shared.activateFileViewerSelecting([shot.url])
+                        }
                     }
                 }
                 .padding(3)
@@ -767,7 +790,7 @@ struct ShotCard: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture(perform: onCopy)
-        .onDrag { NSItemProvider(contentsOf: shot.url) ?? NSItemProvider() }
+        .onDrag { shot.dragProvider() }
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
         .help(T("اضغط للنسخ، أو اسحبها لأي برنامج", "Click to copy, or drag into any app"))
     }

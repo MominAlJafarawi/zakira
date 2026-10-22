@@ -27,12 +27,13 @@ final class ScreenshotWatcher {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        let url = Self.folder.appendingPathComponent("Clipboard Screenshot \(f.string(from: Date())).png")
-        do {
-            try png.write(to: url)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        } catch {
-            DiagLog.write("clipboard shot save failed: \(error.localizedDescription)")
+        let url = Self.folder.appendingPathComponent("Clipboard Screenshot \(f.string(from: Date())).\(ShotCrypto.fileExtension)")
+        guard let sealed = ShotCrypto.seal(png) else {
+            DiagLog.write("clipboard shot not saved: encryption unavailable")
+            return
+        }
+        guard FileManager.default.createFile(atPath: url.path, contents: sealed, attributes: [.posixPermissions: 0o600]) else {
+            DiagLog.write("clipboard shot save failed")
             return
         }
         pruneFolder()
@@ -42,7 +43,7 @@ final class ScreenshotWatcher {
     private func folderShots() -> [Shot] {
         let fm = FileManager.default
         let urls = (try? fm.contentsOfDirectory(at: Self.folder, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles])) ?? []
-        return urls.filter { $0.pathExtension.lowercased() == "png" }.map { url in
+        return urls.filter { ["png", ShotCrypto.fileExtension].contains($0.pathExtension.lowercased()) }.map { url in
             let d = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
             return Shot(url: url, date: d)
         }.sorted { $0.date > $1.date }
@@ -58,7 +59,21 @@ final class ScreenshotWatcher {
         for (i, shot) in folderShots().enumerated() where i >= AppState.maxItems || shot.date < cutoff {
             if (try? FileManager.default.removeItem(at: shot.url)) != nil { removed += 1 }
         }
-        if removed > 0 { DiagLog.write("cleanup: removed \(removed) old clipboard screenshots") }
+        if removed > 0 { DiagLog.detail("cleanup: removed \(removed) old clipboard screenshots") }
+    }
+
+    /// Clipboard screenshots saved by older versions (plain PNG) are encrypted once, then the PNG is deleted.
+    private func encryptOldFiles() {
+        let fm = FileManager.default
+        let urls = (try? fm.contentsOfDirectory(at: Self.folder, includingPropertiesForKeys: [.creationDateKey], options: [.skipsHiddenFiles])) ?? []
+        for url in urls where url.pathExtension.lowercased() == "png" {
+            guard let data = try? Data(contentsOf: url), let sealed = ShotCrypto.seal(data) else { continue }
+            let created = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
+            let dest = url.deletingPathExtension().appendingPathExtension(ShotCrypto.fileExtension)
+            guard fm.createFile(atPath: dest.path, contents: sealed, attributes: [.posixPermissions: 0o600, .creationDate: created]),
+                  ShotCrypto.open((try? Data(contentsOf: dest)) ?? Data()) == data else { continue }
+            try? fm.removeItem(at: url)
+        }
     }
 
     func publish() {
@@ -79,6 +94,7 @@ final class ScreenshotWatcher {
             }
         }
         query.start()
+        encryptOldFiles()
         pruneFolder()
         publish()
         // Check again every 6 hours, so old ones are cleaned even if the Mac is never restarted.
@@ -113,9 +129,10 @@ final class ScreenshotWatcher {
 enum Thumbnails {
     private static var cache: [URL: NSImage] = [:]
 
-    static func image(for url: URL) -> NSImage? {
+    static func image(for shot: Shot) -> NSImage? {
+        let url = shot.url
         if let img = cache[url] { return img }
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        guard let data = shot.imageData(), let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: 520,

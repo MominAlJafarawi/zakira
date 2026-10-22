@@ -14,7 +14,7 @@ final class HotKey {
     func fire(source: String) {
         guard Date().timeIntervalSince(lastFire) > 0.35 else { return }
         lastFire = Date()
-        DiagLog.write("hotkey via \(source)")
+        DiagLog.detail("hotkey via \(source)")
         onPress?()
     }
 

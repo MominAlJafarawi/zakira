@@ -51,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             MainActor.assumeIsolated { KeyCapture.shared.commit(sent: false) }
         }
 
-        DiagLog.write("launch v2.2")
+        DiagLog.wipeOldActivityLogs()
+        DiagLog.write("launch v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
         ClipboardWatcher.shared.start()
         ScreenshotWatcher.shared.start()
         HotKey.shared.onPress = { [weak self] in self?.toggleAtMouse() }
@@ -173,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let screen = NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) } ?? NSScreen.main
         let lowOnScreen = p.y - (screen?.visibleFrame.minY ?? 0) < 560
         present(relativeTo: view, edge: lowOnScreen ? .maxY : .minY)
-        DiagLog.write("hotkey pressed: panel shown=\(popover.isShown) at mouse")
+        DiagLog.detail("hotkey pressed: panel shown=\(popover.isShown) at mouse")
     }
 
     private func present(relativeTo view: NSView, edge: NSRectEdge) {
@@ -182,6 +183,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ui.reset()
         ScreenshotWatcher.shared.publish()
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
+        // Keep the panel out of screen sharing and recordings (Zoom, Teams, QuickTime).
+        popover.contentViewController?.view.window?.sharingType = .none
         NSApp.activate(ignoringOtherApps: true)
         popover.contentViewController?.view.window?.makeKey()
         installKeyMonitor()

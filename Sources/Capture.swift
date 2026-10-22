@@ -60,7 +60,7 @@ final class KeyCapture {
         guard type == .keyDown else { return }
         keyCount += 1
         if keyCount == 1 || keyCount % 50 == 0 {
-            DiagLog.write("keys received=\(keyCount) paused=\(state.paused) secure=\(IsSecureEventInputEnabled()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-")")
+            DiagLog.detail("keys received=\(keyCount) paused=\(state.paused) secure=\(IsSecureEventInputEnabled()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-")")
         }
 
         // Ctrl + Cmd + V or Ctrl + Option + V opens the panel next to the mouse (works even when paused).
@@ -186,10 +186,10 @@ final class KeyCapture {
         if sent {
             state.removeDraft(id: id)
             guard isWorthSaving(text) else { return }
-            DiagLog.write("sent text saved (length \(text.count))")
+            DiagLog.detail("sent text saved (length \(text.count))")
             state.addTyped(text, app: bufferApp)
         } else if isWorthSaving(text) {
-            DiagLog.write("unsent text saved (length \(text.count))")
+            DiagLog.detail("unsent text saved (length \(text.count))")
             state.upsertDraft(id: id, text: text, app: bufferApp)
         } else {
             state.removeDraft(id: id)

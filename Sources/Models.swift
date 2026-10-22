@@ -92,6 +92,14 @@ final class AppState: ObservableObject {
         ExcludedApp(bundleID: "com.1password.1password", name: "1Password"),
         ExcludedApp(bundleID: "com.agilebits.onepassword7", name: "1Password 7"),
         ExcludedApp(bundleID: "com.bitwarden.desktop", name: "Bitwarden"),
+    ] + terminalApps
+
+    /// Terminals don't block the keyboard when sudo asks for the Mac password, so they are excluded by default.
+    static let terminalApps: [ExcludedApp] = [
+        ExcludedApp(bundleID: "com.apple.Terminal", name: "Terminal"),
+        ExcludedApp(bundleID: "com.googlecode.iterm2", name: "iTerm"),
+        ExcludedApp(bundleID: "dev.warp.Warp-Stable", name: "Warp"),
+        ExcludedApp(bundleID: "com.mitchellh.ghostty", name: "Ghostty"),
     ]
 
     private init() {
@@ -102,6 +110,12 @@ final class AppState: ObservableObject {
             excluded = load([ExcludedApp].self, key: "excluded") ?? Self.defaultExcluded
         }
         paused = UserDefaults.standard.bool(forKey: "paused")
+        if !UserDefaults.standard.bool(forKey: "terminalsExcluded") {
+            for t in Self.terminalApps where !excluded.contains(where: { $0.bundleID == t.bundleID }) {
+                excluded.append(t)
+            }
+            UserDefaults.standard.set(true, forKey: "terminalsExcluded")
+        }
     }
 
     // MARK: persistence
@@ -116,7 +130,7 @@ final class AppState: ObservableObject {
         switch SecureStore.read("pinned") {
         case .found(let data):
             if let list = try? JSONDecoder().decode([Entry].self, from: data) {
-                DiagLog.write("pinned loaded from keychain count=\(list.count)")
+                DiagLog.detail("pinned loaded from keychain count=\(list.count)")
                 return list
             }
             pinnedLocked = true
@@ -135,7 +149,7 @@ final class AppState: ObservableObject {
                 if SecureStore.write(data, account: "pinned"),
                    case .found(let back) = SecureStore.read("pinned"), back == data {
                     src.removeObject(forKey: "pinned")
-                    DiagLog.write("migrated \(list.count) pinned items to keychain")
+                    DiagLog.detail("migrated \(list.count) pinned items to keychain")
                     return list
                 }
                 pinnedLocked = true
@@ -151,7 +165,7 @@ final class AppState: ObservableObject {
             return
         }
         let ok = SecureStore.write(data, account: "pinned")
-        DiagLog.write("pinned saved count=\(pinned.count) ok=\(ok)")
+        DiagLog.detail("pinned saved count=\(pinned.count) ok=\(ok)")
     }
 
     private func load<T: Decodable>(_ type: T.Type, key: String) -> T? {
@@ -176,13 +190,18 @@ final class AppState: ObservableObject {
     }
 
     func addTyped(_ text: String, app: NSRunningApplication?) {
-        insert(makeEntry(text, app), into: &typed)
+        guard let safe = Sensitive.filter(text) else { return }
+        insert(makeEntry(safe, app), into: &typed)
     }
 
     func upsertDraft(id: UUID, text: String, app: NSRunningApplication?) {
-        var e = makeEntry(text, app)
+        guard let safe = Sensitive.filter(text) else {
+            removeDraft(id: id)
+            return
+        }
+        var e = makeEntry(safe, app)
         e.id = id
-        drafts.removeAll { $0.id == id || $0.text == text }
+        drafts.removeAll { $0.id == id || $0.text == safe }
         drafts.insert(e, at: 0)
         if drafts.count > Self.maxItems { drafts.removeLast(drafts.count - Self.maxItems) }
     }
@@ -192,7 +211,8 @@ final class AppState: ObservableObject {
     }
 
     func addCopied(_ text: String, app: NSRunningApplication?) {
-        insert(makeEntry(text, app), into: &copied)
+        guard let safe = Sensitive.filter(text) else { return }
+        insert(makeEntry(safe, app), into: &copied)
     }
 
     private func makeEntry(_ text: String, _ app: NSRunningApplication?) -> Entry {
@@ -246,8 +266,10 @@ final class AppState: ObservableObject {
     func copyImage(_ shot: Shot) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        var objects: [NSPasteboardWriting] = [shot.url as NSURL]
-        if let img = NSImage(contentsOf: shot.url) { objects.append(img) }
+        var objects: [NSPasteboardWriting] = []
+        // Encrypted shots are copied as image data only, never as a file path.
+        if !shot.isEncrypted { objects.append(shot.url as NSURL) }
+        if let data = shot.imageData(), let img = NSImage(data: data) { objects.append(img) }
         pb.writeObjects(objects)
         ownChangeCount = pb.changeCount
     }
