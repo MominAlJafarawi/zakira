@@ -8,7 +8,7 @@
 
 **ذاكرة قصيرة لجهازك:** آخر شي كتبته ونسخته وصوّرته، بكبسة وحدة.
 
-[**⬇️ Download for macOS**](https://github.com/MomenJafarawi/zakira/releases/latest) · macOS 14+ · Apple Silicon & Intel · English / العربية
+[**⬇️ Download for macOS**](https://github.com/MominAlJafarawi/zakira/releases/latest) · macOS 14+ · Apple Silicon & Intel · English / العربية
 
 [English](#english) · [العربية](#العربية)
 
@@ -37,7 +37,7 @@ Ever closed a window and lost the message you just wrote? Copied something new a
 
 ### Install
 
-1. Download `Zakira-x.y.dmg` from [Releases](https://github.com/MomenJafarawi/zakira/releases/latest).
+1. Download `Zakira-x.y.dmg` from [Releases](https://github.com/MominAlJafarawi/zakira/releases/latest).
 2. Open it and drag **Zakira** onto **Applications**.
 3. Open Zakira. If macOS says the developer cannot be verified, go to **System Settings → Privacy & Security** and click **Open Anyway**. Zakira is not signed with a paid Apple Developer ID, so this is needed once.
 4. Follow the guide and turn on **Input Monitoring** for Zakira. Without it, copied text and screenshots still work, but typed text is not saved.
@@ -95,7 +95,7 @@ If a code-signing identity named `Zakira Code Signing` exists in your Keychain, 
 
 ### التثبيت
 
-1. نزّل ملف `Zakira-x.y.dmg` من [Releases](https://github.com/MomenJafarawi/zakira/releases/latest).
+1. نزّل ملف `Zakira-x.y.dmg` من [Releases](https://github.com/MominAlJafarawi/zakira/releases/latest).
 2. افتحه واسحب **Zakira** على مجلد **Applications**.
 3. افتح البرنامج. إذا ماك قال إنه "لا يمكن التحقق من المطوّر"، روح على **الإعدادات ← Privacy & Security** واضغط **Open Anyway**. هاد لأن البرنامج مش موقّع بحساب مطوّر مدفوع من Apple، ومرة وحدة بس.
 4. اتبع الدليل وفعّل إذن **Input Monitoring**. بدونه، النسخ واللقطات بيشتغلوا عادي، بس الكتابة ما بتنحفظ.
@@ -120,4 +120,4 @@ If a code-signing identity named `Zakira Code Signing` exists in your Keychain, 
 
 ## License
 
-[MIT](LICENSE) © 2026 [Momen Jafarawi](https://github.com/MomenJafarawi)
+[MIT](LICENSE) © 2026 [Momin AlJafarawi](https://github.com/MominAlJafarawi)
