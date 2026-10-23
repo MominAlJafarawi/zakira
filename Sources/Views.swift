@@ -297,94 +297,116 @@ struct EntryCard: View {
     @State private var hovering = false
 
     var body: some View {
+        card
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .onTapGesture(perform: onCopy)
+            .onHover { h in withAnimation(motion(.easeOut(duration: 0.15))) { hovering = h } }
+            .help(T("اضغط للنسخ", "Click to copy"))
+            .modifier(EntryAccessibility(label: accessibilityText, selected: selected, pinned: pinned,
+                                         isImage: entry.isImage, onCopy: onCopy, onPin: onPin, onDelete: onDelete))
+    }
+
+    // Split into small pieces so every Swift compiler can type-check it quickly.
+
+    private var card: some View {
+        content
+            .environment(\.layoutDirection, entry.isRTL ? .rightToLeft : .leftToRight)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(background)
+            .overlay(border)
+            .overlay(alignment: .topTrailing) { hoverButtons }
+            .overlay { copiedFlash }
+    }
+
+    private var content: some View {
         HStack(alignment: .top, spacing: 10) {
             AppIcon(bundleID: entry.bundleID)
                 .frame(width: 22, height: 22)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                if let data = entry.image, let img = ImageCache.image(for: entry.id, data: data) {
-                    Image(nsImage: img)
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: 110, alignment: .leading)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .accessibilityHidden(true)
-                } else {
-                    Text(entry.text)
-                        .font(.system(size: 13.5))
-                        .lineSpacing(2)
-                        .lineLimit(hovering ? 8 : 2)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                TimelineView(.periodic(from: .now, by: 30)) { _ in
-                    HStack(spacing: 4) {
-                        if pinned && tab != .pinned {
-                            Image(systemName: "pin.fill").font(.system(size: 8)).foregroundStyle(.orange)
-                        }
-                        Text(entry.appName)
-                        Text("·")
-                        Text(relative(entry.date))
-                    }
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                }
+                mainContent
+                meta
             }
         }
-        .environment(\.layoutDirection, entry.isRTL ? .rightToLeft : .leftToRight)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.primary.opacity(hovering || selected ? 0.085 : 0.045))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(selected ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.06), lineWidth: selected ? 1.5 : 0.5)
-        )
-        .overlay(alignment: .topTrailing) {
-            if hovering && !flashed {
-                HStack(spacing: 2) {
-                    if !entry.isImage {
-                        IconButton(symbol: tab == .pinned ? "pin.slash" : (pinned ? "pin.fill" : "pin"),
-                                   tint: pinned ? .orange : .secondary,
-                                   help: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin"),
-                                   action: onPin)
-                    }
-                    IconButton(symbol: "trash", tint: .red, help: T("حذف", "Delete"), action: onDelete)
+    }
+
+    @ViewBuilder private var mainContent: some View {
+        if let data = entry.image, let img = ImageCache.image(for: entry.id, data: data) {
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: 110, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .accessibilityHidden(true)
+        } else {
+            Text(entry.text)
+                .font(.system(size: 13.5))
+                .lineSpacing(2)
+                .lineLimit(hovering ? 8 : 2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var meta: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            HStack(spacing: 4) {
+                if pinned && tab != .pinned {
+                    Image(systemName: "pin.fill").font(.system(size: 8)).foregroundStyle(.orange)
                 }
-                .padding(3)
-                .background(Capsule().fill(.regularMaterial))
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-                .padding(6)
+                Text(entry.appName)
+                Text("·")
+                Text(relative(entry.date))
+            }
+            .font(.system(size: 10.5))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+    }
+
+    private var background: some View {
+        let opacity: Double = hovering || selected ? 0.085 : 0.045
+        return RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(opacity))
+    }
+
+    private var border: some View {
+        let color: Color = selected ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.06)
+        let width: CGFloat = selected ? 1.5 : 0.5
+        return RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(color, lineWidth: width)
+    }
+
+    @ViewBuilder private var hoverButtons: some View {
+        if hovering && !flashed {
+            HStack(spacing: 2) {
+                if !entry.isImage {
+                    IconButton(symbol: tab == .pinned ? "pin.slash" : (pinned ? "pin.fill" : "pin"),
+                               tint: pinned ? .orange : .secondary,
+                               help: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin"),
+                               action: onPin)
+                }
+                IconButton(symbol: "trash", tint: .red, help: T("حذف", "Delete"), action: onDelete)
+            }
+            .padding(3)
+            .background(Capsule().fill(.regularMaterial))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            .padding(6)
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder private var copiedFlash: some View {
+        if flashed {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.green.opacity(0.14))
+                .overlay(
+                    Label(T("تم النسخ", "Copied"), systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.green)
+                )
                 .transition(.opacity)
-            }
         }
-        .overlay {
-            if flashed {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.green.opacity(0.14))
-                    .overlay(
-                        Label(T("تم النسخ", "Copied"), systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.green)
-                    )
-                    .transition(.opacity)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onTapGesture(perform: onCopy)
-        .onHover { h in withAnimation(motion(.easeOut(duration: 0.15))) { hovering = h } }
-        .help(T("اضغط للنسخ", "Click to copy"))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
-        .accessibilityHint(T("اضغط للنسخ", "Click to copy"))
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { onCopy() }
-        .accessibilityAction(named: pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin")) { if !entry.isImage { onPin() } }
-        .accessibilityAction(named: T("حذف", "Delete")) { onDelete() }
     }
 
     private var accessibilityText: String {
@@ -1028,5 +1050,29 @@ struct UpdatesSettings: View {
             Spacer()
             Toggle("", isOn: $updates.autoCheck).labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
+    }
+}
+
+
+struct EntryAccessibility: ViewModifier {
+    let label: String
+    let selected: Bool
+    let pinned: Bool
+    let isImage: Bool
+    let onCopy: () -> Void
+    let onPin: () -> Void
+    let onDelete: () -> Void
+
+    func body(content: Content) -> some View {
+        let traits: AccessibilityTraits = selected ? [.isButton, .isSelected] : .isButton
+        let pinName: String = pinned ? T("إلغاء التثبيت", "Unpin") : T("تثبيت", "Pin")
+        return content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityHint(T("اضغط للنسخ", "Click to copy"))
+            .accessibilityAddTraits(traits)
+            .accessibilityAction { onCopy() }
+            .accessibilityAction(named: pinName) { if !isImage { onPin() } }
+            .accessibilityAction(named: T("حذف", "Delete")) { onDelete() }
     }
 }
