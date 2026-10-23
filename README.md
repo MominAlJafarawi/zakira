@@ -8,9 +8,9 @@
 
 **ذاكرة قصيرة لجهازك:** آخر شي كتبته ونسخته وصوّرته، بكبسة وحدة.
 
-[![Build and test](https://github.com/MomenJafarawi/zakira/actions/workflows/build.yml/badge.svg)](https://github.com/MomenJafarawi/zakira/actions/workflows/build.yml)
+[![Build and test](https://github.com/MominAlJafarawi/zakira/actions/workflows/build.yml/badge.svg)](https://github.com/MominAlJafarawi/zakira/actions/workflows/build.yml)
 
-[**⬇️ Download for macOS**](https://github.com/MomenJafarawi/zakira/releases/latest) · macOS 14+ · Apple Silicon & Intel · English / العربية · Free & open source
+[**⬇️ Download for macOS**](https://github.com/MominAlJafarawi/zakira/releases/latest) · macOS 14+ · Apple Silicon & Intel · English / العربية · Free & open source
 
 [English](#english) · [العربية](#العربية)
 
@@ -40,7 +40,7 @@ Ever closed a window and lost the message you just wrote? Copied something new a
 
 ### Install
 
-1. Download `Zakira-x.y.dmg` from [Releases](https://github.com/MomenJafarawi/zakira/releases/latest).
+1. Download `Zakira-x.y.dmg` from [Releases](https://github.com/MominAlJafarawi/zakira/releases/latest).
 2. *(Optional)* Check the file is untouched. Open Terminal in your Downloads folder and run the command below. The result must match the `.sha256` file published next to the DMG.
    ```bash
    shasum -a 256 Zakira-*.dmg
@@ -87,7 +87,7 @@ Requires the Xcode Command Line Tools (`xcode-select --install`). No Xcode proje
 Tools/make-screenshots.sh   # re-renders the README screenshots with demo text
 ```
 
-If a code-signing identity named `Zakira Code Signing` exists in your Keychain, the build uses it. Otherwise it falls back to an ad-hoc signature. Every push is built and tested by [GitHub Actions](https://github.com/MomenJafarawi/zakira/actions). Want to help test? See the [tester checklist](docs/TESTING.md).
+If a code-signing identity named `Zakira Code Signing` exists in your Keychain, the build uses it. Otherwise it falls back to an ad-hoc signature. Every push is built and tested by [GitHub Actions](https://github.com/MominAlJafarawi/zakira/actions). Want to help test? See the [tester checklist](docs/TESTING.md).
 
 ---
 
@@ -113,7 +113,7 @@ If a code-signing identity named `Zakira Code Signing` exists in your Keychain, 
 
 ### التثبيت
 
-1. نزّل ملف `Zakira-x.y.dmg` من [Releases](https://github.com/MomenJafarawi/zakira/releases/latest).
+1. نزّل ملف `Zakira-x.y.dmg` من [Releases](https://github.com/MominAlJafarawi/zakira/releases/latest).
 2. *(اختياري)* تأكد إن الملف ما انعدّل: افتح Terminal بمجلد التنزيلات واكتب `shasum -a 256 Zakira-*.dmg`. النتيجة لازم تطابق ملف `.sha256` اللي جنب الـ DMG.
 3. افتح الـ DMG واسحب **Zakira** على **Applications**.
 4. افتح Zakira. أول مرة ماك رح يمنعه، لأنه مش موقّع بحساب مطوّر مدفوع من Apple:
@@ -147,4 +147,4 @@ If a code-signing identity named `Zakira Code Signing` exists in your Keychain, 
 
 ## License
 
-[MIT](LICENSE) © 2026 [Momen Jafarawi](https://github.com/MomenJafarawi)
+[MIT](LICENSE) © 2026 [Momin AlJafarawi](https://github.com/MominAlJafarawi)

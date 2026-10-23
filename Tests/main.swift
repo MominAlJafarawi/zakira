@@ -18,7 +18,7 @@ MainActor.assumeIsolated {
                 "Hunter2!xyz", "C0rrect-Horse-9"]
     for t in drop { expect(Sensitive.filter(t) == nil, "drops sensitive", t) }
     let keep = ["Order #48213 ships Friday", "call me 01012345678", "see you at 1530", "hello world",
-                "https://github.com/MomenJafarawi/zakira", "someone@example.com", "CamelCaseName",
+                "https://github.com/MominAlJafarawi/zakira", "someone@example.com", "CamelCaseName",
                 "تمام، بكرة الساعة 10 بنتواصل", "Meeting moved to 3 pm"]
     for t in keep { expect(Sensitive.filter(t) == t, "keeps normal text", t) }
     expect(Sensitive.filter("IBAN DE89 3704 0044 0532 0130 00 bitte") == "IBAN DE89 •••• •••• •••• 3000 bitte", "masks IBAN with spaces")

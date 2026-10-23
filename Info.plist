@@ -12,7 +12,7 @@
   <key>CFBundleVersion</key><string>30</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleLocalizations</key><array><string>en</string><string>ar</string></array>
-  <key>NSHumanReadableCopyright</key><string>© 2026 Momen Jafarawi. MIT License.</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Momin AlJafarawi. MIT License.</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>

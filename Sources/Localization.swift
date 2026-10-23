@@ -55,8 +55,8 @@ func relativeTime(_ date: Date) -> String {
 }
 
 enum Credits {
-    static let author = "Momen Jafarawi"
-    static let repo = URL(string: "https://github.com/MomenJafarawi/zakira")!
+    static let author = "Momin AlJafarawi"
+    static let repo = URL(string: "https://github.com/MominAlJafarawi/zakira")!
 }
 
 

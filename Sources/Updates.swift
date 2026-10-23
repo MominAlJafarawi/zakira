@@ -5,8 +5,8 @@ import AppKit
 @MainActor
 final class Updates: ObservableObject {
     static let shared = Updates()
-    static let releasesPage = URL(string: "https://github.com/MomenJafarawi/zakira/releases/latest")!
-    static let api = URL(string: "https://api.github.com/repos/MomenJafarawi/zakira/releases/latest")!
+    static let releasesPage = URL(string: "https://github.com/MominAlJafarawi/zakira/releases/latest")!
+    static let api = URL(string: "https://api.github.com/repos/MominAlJafarawi/zakira/releases/latest")!
 
     @Published var available: String?
     @Published var autoCheck = UserDefaults.standard.bool(forKey: "autoUpdateCheck") {

@@ -113,7 +113,7 @@ MainActor.assumeIsolated {
         ]
         st.drafts = [e("Hey, quick question about the invoice…", "Mail", "com.apple.mail", 120)]
         st.copied = [
-            e("https://github.com/MomenJafarawi/zakira", "Safari", "com.apple.Safari", 60),
+            e("https://github.com/MominAlJafarawi/zakira", "Safari", "com.apple.Safari", 60),
             e("Order #48213 ships on Friday", "Mail", "com.apple.mail", 1500),
         ]
         st.pinned = [e("Kind regards,\nAlex", "Notes", "com.apple.Notes", 86000)]
@@ -129,7 +129,7 @@ MainActor.assumeIsolated {
         ]
         st.drafts = [e("مرحبا، عندي سؤال صغير عن الفاتورة…", "Mail", "com.apple.mail", 120)]
         st.copied = [
-            e("https://github.com/MomenJafarawi/zakira", "Safari", "com.apple.Safari", 60),
+            e("https://github.com/MominAlJafarawi/zakira", "Safari", "com.apple.Safari", 60),
             e("الطلب رقم 48213 بيوصل يوم الجمعة", "Mail", "com.apple.mail", 1500),
         ]
         st.pinned = [e("مع التحية،\nأحمد", "Notes", "com.apple.Notes", 86000)]
